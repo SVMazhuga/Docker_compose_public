@@ -1,0 +1,229 @@
+services:
+  postgres:
+    image: postgres:13-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./services/database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    networks:
+      - backend
+
+  rabbitmq:
+    image: rabbitmq:3.8-management
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 320M
+        reservations:
+          cpus: '0.1'
+          memory: 192M
+    networks:
+      - backend
+
+  session-service:
+    build:
+      context: ./services/session-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./services/session-service/.env
+    environment:
+      - POSTGRES_DB=users_db
+      - JAVA_TOOL_OPTIONS=-Xmx384m -Xms256m
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 384M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+    networks:
+      - backend
+
+  hotel-service:
+    build:
+      context: ./services/hotel-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./services/hotel-service/.env
+    environment:
+      - POSTGRES_DB=hotels_db
+      - JAVA_TOOL_OPTIONS=-Xmx384m -Xms256m
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 384M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+    networks:
+      - backend
+
+  booking-service:
+    build:
+      context: ./services/booking-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./services/booking-service/.env
+    environment:
+      - POSTGRES_DB=reservations_db
+      - JAVA_TOOL_OPTIONS=-Xmx512m -Xms384m
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 576M
+        reservations:
+          cpus: '0.25'
+          memory: 384M
+    networks:
+      - backend
+
+  payment-service:
+    build:
+      context: ./services/payment-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./services/payment-service/.env
+    environment:
+      - POSTGRES_DB=payments_db
+      - JAVA_TOOL_OPTIONS=-Xmx384m -Xms256m
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 384M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+    networks:
+      - backend
+
+  loyalty-service:
+    build:
+      context: ./services/loyalty-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./services/loyalty-service/.env
+    environment:
+      - POSTGRES_DB=balances_db
+      - JAVA_TOOL_OPTIONS=-Xmx384m -Xms256m
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 448M
+        reservations:
+          cpus: '0.1'
+          memory: 320M
+    networks:
+      - backend
+
+  report-service:
+    build:
+      context: ./services/report-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./services/report-service/.env
+    environment:
+      - POSTGRES_DB=statistics_db
+      - JAVA_TOOL_OPTIONS=-Xmx512m -Xms384m
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 448M
+        reservations:
+          cpus: '0.1'
+          memory: 320M
+    networks:
+      - backend
+
+  gateway-service:
+    build:
+      context: ./services/gateway-service
+      dockerfile: Dockerfile
+    env_file:
+      - ./services/gateway-service/.env
+    environment:
+      - JAVA_TOOL_OPTIONS=-Xmx384m -Xms256m
+    ports:
+      - "8087:8087"
+    depends_on:
+      - session-service
+      - hotel-service
+      - booking-service
+      - payment-service
+      - loyalty-service
+      - report-service
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 320M
+        reservations:
+          cpus: '0.1'
+          memory: 192M
+    networks:
+      - backend
+
+volumes:
+  postgres-data:
+
+networks:
+  backend:
+    driver: bridge

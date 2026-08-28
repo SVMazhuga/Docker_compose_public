@@ -1,0 +1,211 @@
+services:
+  postgres:
+    image: postgres:13-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      replicas: 1
+      placement: 
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    networks:
+      - backend
+
+  rabbitmq:
+    image: rabbitmq:3.8-management
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      replicas: 1 
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 320M
+        reservations:
+          cpus: '0.1'
+          memory: 192M
+    networks:
+      - backend
+
+  session-service:
+    image: parthefr/session-service:1.1
+    env_file:
+      - ./env/session-service.env
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 384M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+    networks:
+      - backend
+
+  hotel-service:
+    image: parthefr/hotel-service:1.1
+    env_file:
+      - ./env/hotel-service.env
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 384M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+    networks:
+      - backend
+
+  booking-service:
+    image: parthefr/booking-service:1.1
+    env_file:
+      - ./env/booking-service.env
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 576M
+        reservations:
+          cpus: '0.25'
+          memory: 384M
+    networks:
+      - backend
+
+  payment-service:
+    image: parthefr/payment-service:1.1
+    env_file:
+      - ./env/payment-service.env
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 384M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+    networks:
+      - backend
+
+  loyalty-service:
+    image: parthefr/loyalty-service:1.1
+    env_file:
+      - ./env/loyalty-service.env
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 448M
+        reservations:
+          cpus: '0.1'
+          memory: 320M
+    networks:
+      - backend
+
+  report-service:
+    image: parthefr/report-service:1.1
+    env_file:
+      - ./env/report-service.env
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/8086' || exit 1"]                                
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 448M
+        reservations:
+          cpus: '0.1'
+          memory: 320M
+    networks:
+      - backend
+
+  gateway-service:
+    image: parthefr/gateway-service:1.1
+    env_file:
+      - ./env/gateway-service.env
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/8087' || exit 1"]                                                 
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 320M
+        reservations:
+          cpus: '0.1'
+          memory: 192M
+    networks:
+      - backend
+
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    configs:
+      - source: nginx-config
+        target: /etc/nginx/nginx.conf 
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+    networks:
+      - backend
+
+
+volumes:
+  postgres-data:
+
+configs:
+  nginx-config:
+    external: true
+
+networks:
+  backend:
+    driver: overlay
